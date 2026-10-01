@@ -1,0 +1,38 @@
+# Go build output
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Coverage and profiling
+coverage.out
+coverage.html
+*.prof
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Local configuration and credentials
+.env
+.env.*
+*.kubeconfig
+kubeconfig
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local test artifacts
+/tmp/
+/test-results/
