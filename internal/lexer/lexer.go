@@ -9,7 +9,7 @@ import (
 
 // Lexer scans SQL input one Unicode code point at a time.
 type Lexer struct {
-	input  []rune
+	input    []rune
 	position int
 	line     int
 	column   int
