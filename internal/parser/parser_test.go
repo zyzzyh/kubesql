@@ -1,0 +1,96 @@
+package parser
+
+import (
+	"encoding/json"
+	"errors"
+	"reflect"
+	"testing"
+
+	"github.com/zyzzyh/kubesql/internal/ast"
+)
+
+func TestParseSelect(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "named columns",
+			input: "select name, replicas FROM deployments;",
+			want:  `{"type":"select","columns":[{"type":"column","name":"name"},{"type":"column","name":"replicas"}],"table":"deployments"}`,
+		},
+		{
+			name:  "star without semicolon",
+			input: "SELECT * FROM ingresses",
+			want:  `{"type":"select","columns":[{"type":"star"}],"table":"ingresses"}`,
+		},
+		{
+			name:  "unknown names remain syntax-valid",
+			input: "SELECT unlisted FROM unknown_table",
+			want:  `{"type":"select","columns":[{"type":"column","name":"unlisted"}],"table":"unknown_table"}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			statement, err := New(test.input).Parse()
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := json.Marshal(statement)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != test.want {
+				t.Fatalf("AST JSON: got %s, want %s", got, test.want)
+			}
+		})
+	}
+}
+
+func TestParseStarIsDistinctNode(t *testing.T) {
+	statement, err := New("SELECT * FROM deployments").Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection, ok := statement.(*ast.SelectStatement)
+	if !ok {
+		t.Fatalf("statement type: got %T", statement)
+	}
+	if len(selection.Columns) != 1 {
+		t.Fatalf("column count: got %d, want 1", len(selection.Columns))
+	}
+	if _, ok := selection.Columns[0].(*ast.Star); !ok {
+		t.Fatalf("selection type: got %T, want *ast.Star", selection.Columns[0])
+	}
+}
+
+func TestParseErrors(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  Error
+	}{
+		{"missing select", "name FROM deployments", Error{Code: "E_PARSE", Line: 1, Column: 1, Message: `expected SELECT, got "name"`}},
+		{"missing column", "SELECT name, FROM deployments;", Error{Code: "E_PARSE", Line: 1, Column: 14, Message: `expected column name, got "FROM"`}},
+		{"missing from", "SELECT name deployments", Error{Code: "E_PARSE", Line: 1, Column: 13, Message: `expected FROM, got "deployments"`}},
+		{"missing table", "SELECT name FROM", Error{Code: "E_PARSE", Line: 1, Column: 17, Message: `expected table name, got "end of input"`}},
+		{"extra statement", "SELECT name FROM deployments; SELECT * FROM ingresses", Error{Code: "E_PARSE", Line: 1, Column: 31, Message: `expected end of input, got "SELECT"`}},
+		{"invalid character", "SELECT @ FROM deployments", Error{Code: "E_PARSE", Line: 1, Column: 8, Message: `expected column name, got "@"`}},
+		{"multiline position", "SELECT name,\nFROM deployments", Error{Code: "E_PARSE", Line: 2, Column: 1, Message: `expected column name, got "FROM"`}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := New(test.input).Parse()
+			var parseErr *Error
+			if !errors.As(err, &parseErr) {
+				t.Fatalf("error type: got %T (%v), want *parser.Error", err, err)
+			}
+			if !reflect.DeepEqual(*parseErr, test.want) {
+				t.Fatalf("parse error: got %#v, want %#v", *parseErr, test.want)
+			}
+		})
+	}
+}
