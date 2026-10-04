@@ -17,6 +17,15 @@ type resourceList struct {
 	rows []resourceRow
 }
 
+func (r resourceRow) values() map[string]any {
+	return map[string]any{
+		"name":                    r.name,
+		"namespace":               r.namespace,
+		"replicas":                r.replicas,
+		"default_backend_service": r.defaultBackendService,
+	}
+}
+
 func fromNamespaces(items *corev1.NamespaceList) resourceList {
 	rows := make([]resourceRow, 0, len(items.Items))
 	for _, item := range items.Items {
@@ -47,25 +56,4 @@ func fromIngresses(items *networkingv1.IngressList) resourceList {
 		rows = append(rows, resourceRow{name: item.Name, namespace: item.Namespace, defaultBackendService: service})
 	}
 	return resourceList{rows: rows}
-}
-
-func project(resources resourceList, tableName string, columns []string) []map[string]any {
-	result := make([]map[string]any, 0, len(resources.rows))
-	for _, resource := range resources.rows {
-		row := make(map[string]any, len(columns))
-		for _, column := range columns {
-			switch column {
-			case "name":
-				row[column] = resource.name
-			case "namespace":
-				row[column] = resource.namespace
-			case "replicas":
-				row[column] = resource.replicas
-			case "default_backend_service":
-				row[column] = resource.defaultBackendService
-			}
-		}
-		result = append(result, row)
-	}
-	return result
 }

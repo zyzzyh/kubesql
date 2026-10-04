@@ -7,6 +7,7 @@ import (
 
 	"github.com/zyzzyh/kubesql/internal/ast"
 	"github.com/zyzzyh/kubesql/internal/catalog"
+	"github.com/zyzzyh/kubesql/internal/eval"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -30,21 +31,43 @@ func (e *Executor) Execute(ctx context.Context, statement *ast.SelectStatement) 
 		return nil, err
 	}
 	if table.Namespaced && e.allNamespaces {
-		return e.executeAllNamespaces(ctx, table.Name, columns)
+		return e.executeAllNamespaces(ctx, table.Name, columns, statement.Where)
 	}
-	return e.executeNamespace(ctx, table.Name, columns, e.namespace)
+	return e.executeNamespace(ctx, table.Name, columns, e.namespace, statement.Where)
 }
 
-func (e *Executor) executeNamespace(ctx context.Context, tableName string, columns []string, namespace string) ([]map[string]any, error) {
+func (e *Executor) executeNamespace(ctx context.Context, tableName string, columns []string, namespace string, where ast.Expression) ([]map[string]any, error) {
 	resources, err := e.list(ctx, tableName, namespace)
 	if err != nil {
 		return nil, err
 	}
-	return project(resources, tableName, columns), nil
+	return filterAndProject(resources, columns, where)
 }
 
-func (e *Executor) executeAllNamespaces(ctx context.Context, tableName string, columns []string) ([]map[string]any, error) {
-	return e.executeNamespace(ctx, tableName, columns, "")
+func (e *Executor) executeAllNamespaces(ctx context.Context, tableName string, columns []string, where ast.Expression) ([]map[string]any, error) {
+	return e.executeNamespace(ctx, tableName, columns, "", where)
+}
+
+func filterAndProject(resources resourceList, columns []string, where ast.Expression) ([]map[string]any, error) {
+	result := make([]map[string]any, 0, len(resources.rows))
+	for _, resource := range resources.rows {
+		values := resource.values()
+		if where != nil {
+			matched, err := eval.Evaluate(where, values)
+			if err != nil {
+				return nil, err
+			}
+			if matched != eval.True {
+				continue
+			}
+		}
+		row := make(map[string]any, len(columns))
+		for _, column := range columns {
+			row[column] = values[column]
+		}
+		result = append(result, row)
+	}
+	return result, nil
 }
 
 func (e *Executor) list(ctx context.Context, tableName, namespace string) (resourceList, error) {
