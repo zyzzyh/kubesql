@@ -60,7 +60,7 @@ func main() {
 		if err := json.NewEncoder(os.Stdout).Encode(rows); err != nil {
 			fail(fmt.Errorf("write JSON: %w", err))
 		}
-	case *ast.UpdateStatement, *ast.DeleteStatement:
+	case *ast.UpdateStatement, *ast.DeleteStatement, *ast.InsertStatement:
 		result, err := write.NewExecutor(client, opts.namespace).Execute(context.Background(), statement)
 		if err != nil {
 			fail(err)

@@ -27,6 +27,8 @@ func (e *Executor) Execute(ctx context.Context, statement ast.Statement) (Result
 		return e.update(ctx, statement)
 	case *ast.DeleteStatement:
 		return e.delete(ctx, statement)
+	case *ast.InsertStatement:
+		return e.insert(ctx, statement)
 	default:
 		return Result{}, fmt.Errorf("E_SEMANTIC: unsupported write statement %T", statement)
 	}
