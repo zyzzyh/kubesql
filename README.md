@@ -248,6 +248,15 @@ kubectl config current-context
 
 需要真实 API Server 的行为使用 minikube 集成测试，并按题目提供的 YAML fixture 验证。
 
+集成测试位于 `test/integration`，fixture 位于 `fixtures/integration-base.yaml`。普通 `go test ./...` 不会连接 Kubernetes；准备好集群后显式设置环境变量运行：
+
+```powershell
+$env:KUBESQL_INTEGRATION = "1"
+go test ./test/integration -v
+```
+
+每个测试会创建唯一的 `sql-it-*` namespace，使用 `kubectl` 准备测试资源，再启动当前项目编译出的 `ksql` 二进制验证真实 API Server 行为；测试结束后会删除该 namespace。集成测试只使用这个测试专用 namespace，不读取或提交 kubeconfig、Token 等凭据。
+
 提交前运行：
 
 ```powershell
@@ -297,4 +306,3 @@ docs(readme): describe project requirements
 - SQL NULL 的三值逻辑和类型比较规则。
 
 AI 生成的代码需要经过测试、人工阅读和静态检查，不能把无法解释的代码直接提交。
-
