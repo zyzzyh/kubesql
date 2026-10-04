@@ -28,6 +28,8 @@ func (p *Parser) Parse() (ast.Statement, error) {
 	switch p.current.Type {
 	case token.Select:
 		statement, err = p.parseSelect()
+	case token.Insert:
+		statement, err = p.parseInsert()
 	case token.Update:
 		statement, err = p.parseUpdate()
 	case token.Delete:
@@ -45,6 +47,59 @@ func (p *Parser) Parse() (ast.Statement, error) {
 		return nil, err
 	}
 	return statement, nil
+}
+
+func (p *Parser) parseInsert() (*ast.InsertStatement, error) {
+	p.advance()
+	if err := p.expect(token.Into, "INTO"); err != nil {
+		return nil, err
+	}
+	if p.current.Type != token.Identifier {
+		return nil, expected("table name", p.current)
+	}
+	statement := &ast.InsertStatement{Type: "insert", Table: p.current.Literal}
+	p.advance()
+	if err := p.expect(token.LeftParen, "("); err != nil {
+		return nil, err
+	}
+	columns, err := p.parseInsertColumns()
+	if err != nil {
+		return nil, err
+	}
+	statement.Columns = columns
+	if err := p.expect(token.RightParen, ")"); err != nil {
+		return nil, err
+	}
+	if err := p.expect(token.Values, "VALUES"); err != nil {
+		return nil, err
+	}
+	if err := p.expect(token.LeftParen, "("); err != nil {
+		return nil, err
+	}
+	value, err := p.parsePrimary()
+	if err != nil {
+		return nil, err
+	}
+	statement.Values = []ast.Expression{value}
+	if err := p.expect(token.RightParen, ")"); err != nil {
+		return nil, err
+	}
+	return statement, nil
+}
+
+func (p *Parser) parseInsertColumns() ([]string, error) {
+	columns := make([]string, 0, 1)
+	for {
+		if p.current.Type != token.Identifier {
+			return nil, expected("column name", p.current)
+		}
+		columns = append(columns, p.current.Literal)
+		p.advance()
+		if p.current.Type != token.Comma {
+			return columns, nil
+		}
+		p.advance()
+	}
 }
 
 func (p *Parser) parseUpdate() (*ast.UpdateStatement, error) {

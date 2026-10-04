@@ -31,6 +31,16 @@ type DeleteStatement struct {
 
 func (*DeleteStatement) statementNode() {}
 
+// InsertStatement describes one INSERT statement with one VALUES tuple.
+type InsertStatement struct {
+	Type    string       `json:"type"`
+	Table   string       `json:"table"`
+	Columns []string     `json:"columns"`
+	Values  []Expression `json:"values"`
+}
+
+func (*InsertStatement) statementNode() {}
+
 // SelectItem is a column name or an explicit star in a SELECT list.
 type SelectItem interface {
 	selectItemNode()

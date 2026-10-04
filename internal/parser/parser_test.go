@@ -115,6 +115,24 @@ func TestParseUpdateAndDelete(t *testing.T) {
 	}
 }
 
+func TestParseInsert(t *testing.T) {
+	statement, err := New("INSERT INTO deployments (manifest) VALUES ('{''kind'': ''Deployment''}')").Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	insert, ok := statement.(*ast.InsertStatement)
+	if !ok {
+		t.Fatalf("statement type: got %T", statement)
+	}
+	if insert.Table != "deployments" || len(insert.Columns) != 1 || insert.Columns[0] != "manifest" || len(insert.Values) != 1 {
+		t.Fatalf("unexpected INSERT AST: %#v", insert)
+	}
+	literal, ok := insert.Values[0].(*ast.Literal)
+	if !ok || literal.Kind != "string" || literal.Value != "{'kind': 'Deployment'}" {
+		t.Fatalf("unexpected INSERT value: %#v", insert.Values[0])
+	}
+}
+
 func TestParseWhereErrors(t *testing.T) {
 	tests := []string{
 		"SELECT name FROM deployments WHERE name =",

@@ -8,6 +8,7 @@ const (
 	Illegal      Type = "ILLEGAL"
 	EOF          Type = "EOF"
 	Select       Type = "SELECT"
+	Insert       Type = "INSERT"
 	Update       Type = "UPDATE"
 	Delete       Type = "DELETE"
 	From         Type = "FROM"
