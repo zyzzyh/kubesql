@@ -182,8 +182,18 @@ func keywordType(literal string) token.Type {
 	switch strings.ToUpper(literal) {
 	case "SELECT":
 		return token.Select
+	case "UPDATE":
+		return token.Update
+	case "DELETE":
+		return token.Delete
 	case "FROM":
 		return token.From
+	case "SET":
+		return token.Set
+	case "INTO":
+		return token.Into
+	case "VALUES":
+		return token.Values
 	case "WHERE":
 		return token.Where
 	case "AND":

@@ -21,13 +21,20 @@ func New(input string) *Parser {
 	return &Parser{lexer: l, current: l.NextToken()}
 }
 
-// Parse parses one SELECT statement, an optional semicolon, and EOF.
+// Parse parses one supported statement, an optional semicolon, and EOF.
 func (p *Parser) Parse() (ast.Statement, error) {
-	if p.current.Type != token.Select {
+	var statement ast.Statement
+	var err error
+	switch p.current.Type {
+	case token.Select:
+		statement, err = p.parseSelect()
+	case token.Update:
+		statement, err = p.parseUpdate()
+	case token.Delete:
+		statement, err = p.parseDelete()
+	default:
 		return nil, expected("SELECT", p.current)
 	}
-
-	statement, err := p.parseSelect()
 	if err != nil {
 		return nil, err
 	}
@@ -37,6 +44,77 @@ func (p *Parser) Parse() (ast.Statement, error) {
 	if err := p.expect(token.EOF, "end of input"); err != nil {
 		return nil, err
 	}
+	return statement, nil
+}
+
+func (p *Parser) parseUpdate() (*ast.UpdateStatement, error) {
+	p.advance()
+	if p.current.Type != token.Identifier {
+		return nil, expected("table name", p.current)
+	}
+	statement := &ast.UpdateStatement{Type: "update", Table: p.current.Literal}
+	p.advance()
+	if err := p.expect(token.Set, "SET"); err != nil {
+		return nil, err
+	}
+	assignments, err := p.parseAssignments()
+	if err != nil {
+		return nil, err
+	}
+	statement.Assignments = assignments
+	if p.current.Type == token.Where {
+		p.advance()
+		statement.Where, err = p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return statement, nil
+}
+
+func (p *Parser) parseAssignments() ([]ast.Assignment, error) {
+	assignments := make([]ast.Assignment, 0, 1)
+	for {
+		if p.current.Type != token.Identifier {
+			return nil, expected("column name", p.current)
+		}
+		column := p.current.Literal
+		p.advance()
+		if err := p.expect(token.Equal, "="); err != nil {
+			return nil, err
+		}
+		value, err := p.parsePrimary()
+		if err != nil {
+			return nil, err
+		}
+		assignments = append(assignments, ast.Assignment{Column: column, Value: value})
+		if p.current.Type != token.Comma {
+			return assignments, nil
+		}
+		p.advance()
+	}
+}
+
+func (p *Parser) parseDelete() (*ast.DeleteStatement, error) {
+	p.advance()
+	if err := p.expect(token.From, "FROM"); err != nil {
+		return nil, err
+	}
+	if p.current.Type != token.Identifier {
+		return nil, expected("table name", p.current)
+	}
+	statement := &ast.DeleteStatement{Type: "delete", Table: p.current.Literal}
+	p.advance()
+	var where ast.Expression
+	if p.current.Type == token.Where {
+		p.advance()
+		parsed, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		where = parsed
+	}
+	statement.Where = where
 	return statement, nil
 }
 

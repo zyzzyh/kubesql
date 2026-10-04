@@ -6,6 +6,31 @@ type Statement interface {
 	statementNode()
 }
 
+// Assignment updates one writable resource field.
+type Assignment struct {
+	Column string     `json:"column"`
+	Value  Expression `json:"value"`
+}
+
+// UpdateStatement describes an UPDATE statement.
+type UpdateStatement struct {
+	Type        string       `json:"type"`
+	Table       string       `json:"table"`
+	Assignments []Assignment `json:"assignments"`
+	Where       Expression   `json:"where"`
+}
+
+func (*UpdateStatement) statementNode() {}
+
+// DeleteStatement describes a DELETE statement.
+type DeleteStatement struct {
+	Type  string     `json:"type"`
+	Table string     `json:"table"`
+	Where Expression `json:"where"`
+}
+
+func (*DeleteStatement) statementNode() {}
+
 // SelectItem is a column name or an explicit star in a SELECT list.
 type SelectItem interface {
 	selectItemNode()

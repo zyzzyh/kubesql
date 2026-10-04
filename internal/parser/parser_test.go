@@ -96,6 +96,25 @@ func TestParseWhereParenthesesNotAndNull(t *testing.T) {
 	}
 }
 
+func TestParseUpdateAndDelete(t *testing.T) {
+	statement, err := New("UPDATE deployments SET replicas = 3, labels = '{''app'': ''web''}' WHERE name = 'web'").Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	update, ok := statement.(*ast.UpdateStatement)
+	if !ok || len(update.Assignments) != 2 || update.Table != "deployments" {
+		t.Fatalf("unexpected UPDATE AST: %#v", statement)
+	}
+	statement, err = New("DELETE FROM deployments WHERE replicas = 0;").Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleteStatement, ok := statement.(*ast.DeleteStatement)
+	if !ok || deleteStatement.Table != "deployments" || deleteStatement.Where == nil {
+		t.Fatalf("unexpected DELETE AST: %#v", statement)
+	}
+}
+
 func TestParseWhereErrors(t *testing.T) {
 	tests := []string{
 		"SELECT name FROM deployments WHERE name =",
