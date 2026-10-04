@@ -53,6 +53,9 @@ func Resolve(statement *ast.SelectStatement) (Table, []string, error) {
 			for _, column := range table.Columns {
 				columns = append(columns, column.Name)
 			}
+			if err := validateExpression(table, statement.Where); err != nil {
+				return Table{}, nil, err
+			}
 			return table, columns, nil
 		}
 	}
@@ -69,6 +72,9 @@ func Resolve(statement *ast.SelectStatement) (Table, []string, error) {
 		}
 		columns = append(columns, name)
 	}
+	if err := validateExpression(table, statement.Where); err != nil {
+		return Table{}, nil, err
+	}
 	return table, columns, nil
 }
 
@@ -79,4 +85,30 @@ func hasColumn(table Table, name string) bool {
 		}
 	}
 	return false
+}
+
+func validateExpression(table Table, expression ast.Expression) error {
+	if expression == nil {
+		return nil
+	}
+	switch expression := expression.(type) {
+	case *ast.ColumnReference:
+		if !hasColumn(table, strings.ToLower(expression.Name)) {
+			return fmt.Errorf("E_SEMANTIC: unknown column %q for table %q", expression.Name, table.Name)
+		}
+	case *ast.BinaryExpression:
+		if err := validateExpression(table, expression.Left); err != nil {
+			return err
+		}
+		return validateExpression(table, expression.Right)
+	case *ast.UnaryExpression:
+		return validateExpression(table, expression.Expression)
+	case *ast.IsNullExpression:
+		return validateExpression(table, expression.Expression)
+	case *ast.Literal:
+		return nil
+	default:
+		return fmt.Errorf("E_SEMANTIC: unsupported WHERE expression %T", expression)
+	}
+	return nil
 }
