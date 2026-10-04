@@ -12,6 +12,7 @@ import (
 	"github.com/zyzzyh/kubesql/internal/kube"
 	"github.com/zyzzyh/kubesql/internal/parser"
 	"github.com/zyzzyh/kubesql/internal/query"
+	"github.com/zyzzyh/kubesql/internal/write"
 )
 
 type options struct {
@@ -43,11 +44,6 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
-	selectStatement, ok := statement.(*ast.SelectStatement)
-	if !ok {
-		fail(fmt.Errorf("unsupported statement type %T", statement))
-	}
-
 	client, defaultNamespace, err := kube.NewClient(opts.kubeconfig, opts.contextName)
 	if err != nil {
 		fail(err)
@@ -55,12 +51,28 @@ func main() {
 	if opts.namespace == "" {
 		opts.namespace = defaultNamespace
 	}
-	rows, err := query.NewExecutor(client, opts.namespace, opts.allNamespaces).Execute(context.Background(), selectStatement)
-	if err != nil {
-		fail(err)
-	}
-	if err := json.NewEncoder(os.Stdout).Encode(rows); err != nil {
-		fail(fmt.Errorf("write JSON: %w", err))
+	switch statement := statement.(type) {
+	case *ast.SelectStatement:
+		rows, err := query.NewExecutor(client, opts.namespace, opts.allNamespaces).Execute(context.Background(), statement)
+		if err != nil {
+			fail(err)
+		}
+		if err := json.NewEncoder(os.Stdout).Encode(rows); err != nil {
+			fail(fmt.Errorf("write JSON: %w", err))
+		}
+	case *ast.UpdateStatement, *ast.DeleteStatement:
+		result, err := write.NewExecutor(client, opts.namespace).Execute(context.Background(), statement)
+		if err != nil {
+			fail(err)
+		}
+		if err := json.NewEncoder(os.Stdout).Encode(result); err != nil {
+			fail(fmt.Errorf("write JSON: %w", err))
+		}
+		if result.HasFailures() {
+			os.Exit(1)
+		}
+	default:
+		fail(fmt.Errorf("unsupported statement type %T", statement))
 	}
 }
 
