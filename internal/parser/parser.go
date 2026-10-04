@@ -2,6 +2,8 @@
 package parser
 
 import (
+	"strconv"
+
 	"github.com/zyzzyh/kubesql/internal/ast"
 	"github.com/zyzzyh/kubesql/internal/lexer"
 	"github.com/zyzzyh/kubesql/internal/token"
@@ -54,7 +56,16 @@ func (p *Parser) parseSelect() (*ast.SelectStatement, error) {
 
 	table := p.current.Literal
 	p.advance()
-	return &ast.SelectStatement{Type: "select", Columns: columns, Table: table}, nil
+
+	var where ast.Expression
+	if p.current.Type == token.Where {
+		p.advance()
+		where, err = p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &ast.SelectStatement{Type: "select", Columns: columns, Table: table, Where: where}, nil
 }
 
 func (p *Parser) parseSelectList() ([]ast.SelectItem, error) {
@@ -86,6 +97,139 @@ func (p *Parser) parseColumn() (*ast.Column, error) {
 	column := &ast.Column{Type: "column", Name: p.current.Literal}
 	p.advance()
 	return column, nil
+}
+
+// parseExpression applies SQL boolean precedence: NOT, then AND, then OR.
+func (p *Parser) parseExpression() (ast.Expression, error) {
+	return p.parseOr()
+}
+
+func (p *Parser) parseOr() (ast.Expression, error) {
+	left, err := p.parseAnd()
+	if err != nil {
+		return nil, err
+	}
+	for p.current.Type == token.Or {
+		p.advance()
+		right, err := p.parseAnd()
+		if err != nil {
+			return nil, err
+		}
+		left = &ast.BinaryExpression{Type: "binary", Operator: "OR", Left: left, Right: right}
+	}
+	return left, nil
+}
+
+func (p *Parser) parseAnd() (ast.Expression, error) {
+	left, err := p.parseNot()
+	if err != nil {
+		return nil, err
+	}
+	for p.current.Type == token.And {
+		p.advance()
+		right, err := p.parseNot()
+		if err != nil {
+			return nil, err
+		}
+		left = &ast.BinaryExpression{Type: "binary", Operator: "AND", Left: left, Right: right}
+	}
+	return left, nil
+}
+
+func (p *Parser) parseNot() (ast.Expression, error) {
+	if p.current.Type == token.Not {
+		p.advance()
+		expression, err := p.parseNot()
+		if err != nil {
+			return nil, err
+		}
+		return &ast.UnaryExpression{Type: "unary", Operator: "NOT", Expression: expression}, nil
+	}
+	return p.parseComparison()
+}
+
+func (p *Parser) parseComparison() (ast.Expression, error) {
+	left, err := p.parsePrimary()
+	if err != nil {
+		return nil, err
+	}
+
+	if p.current.Type == token.Is {
+		p.advance()
+		not := false
+		if p.current.Type == token.Not {
+			not = true
+			p.advance()
+		}
+		if err := p.expect(token.Null, "NULL"); err != nil {
+			return nil, err
+		}
+		return &ast.IsNullExpression{Type: "is_null", Expression: left, Not: not}, nil
+	}
+
+	if isComparisonOperator(p.current.Type) {
+		operator := p.current.Literal
+		p.advance()
+		right, err := p.parsePrimary()
+		if err != nil {
+			return nil, err
+		}
+		return &ast.BinaryExpression{Type: "binary", Operator: operator, Left: left, Right: right}, nil
+	}
+	return left, nil
+}
+
+func (p *Parser) parsePrimary() (ast.Expression, error) {
+	current := p.current
+	switch current.Type {
+	case token.Identifier:
+		p.advance()
+		return &ast.ColumnReference{Type: "column_reference", Name: current.Literal}, nil
+	case token.String:
+		p.advance()
+		return &ast.Literal{Type: "literal", Kind: "string", Value: current.Literal}, nil
+	case token.Integer:
+		p.advance()
+		value, err := strconv.ParseInt(current.Literal, 10, 64)
+		if err != nil {
+			return nil, expected("integer literal", current)
+		}
+		return &ast.Literal{Type: "literal", Kind: "integer", Value: value}, nil
+	case token.Decimal:
+		p.advance()
+		value, err := strconv.ParseFloat(current.Literal, 64)
+		if err != nil {
+			return nil, expected("decimal literal", current)
+		}
+		return &ast.Literal{Type: "literal", Kind: "decimal", Value: value}, nil
+	case token.True, token.False:
+		p.advance()
+		return &ast.Literal{Type: "literal", Kind: "boolean", Value: current.Type == token.True}, nil
+	case token.Null:
+		p.advance()
+		return &ast.Literal{Type: "literal", Kind: "null", Value: nil}, nil
+	case token.LeftParen:
+		p.advance()
+		expression, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		if err := p.expect(token.RightParen, ")"); err != nil {
+			return nil, err
+		}
+		return expression, nil
+	default:
+		return nil, expected("expression", current)
+	}
+}
+
+func isComparisonOperator(kind token.Type) bool {
+	switch kind {
+	case token.Equal, token.NotEqual, token.Greater, token.GreaterEqual, token.Less, token.LessEqual:
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *Parser) expect(kind token.Type, name string) error {

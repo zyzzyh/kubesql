@@ -66,6 +66,49 @@ func TestParseStarIsDistinctNode(t *testing.T) {
 	}
 }
 
+func TestParseWherePrecedence(t *testing.T) {
+	statement, err := New("SELECT name FROM deployments WHERE name = 'web' OR name = 'worker' AND replicas >= 3").Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	selectStatement := statement.(*ast.SelectStatement)
+	got, err := json.Marshal(selectStatement.Where)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"type":"binary","operator":"OR","left":{"type":"binary","operator":"=","left":{"type":"column_reference","name":"name"},"right":{"type":"literal","kind":"string","value":"web"}},"right":{"type":"binary","operator":"AND","left":{"type":"binary","operator":"=","left":{"type":"column_reference","name":"name"},"right":{"type":"literal","kind":"string","value":"worker"}},"right":{"type":"binary","operator":"\u003e=","left":{"type":"column_reference","name":"replicas"},"right":{"type":"literal","kind":"integer","value":3}}}}`
+	if string(got) != want {
+		t.Fatalf("WHERE AST: got %s, want %s", got, want)
+	}
+}
+
+func TestParseWhereParenthesesNotAndNull(t *testing.T) {
+	tests := []string{
+		"SELECT name FROM deployments WHERE NOT (name = 'web')",
+		"SELECT name FROM ingresses WHERE default_backend_service IS NULL",
+		"SELECT name FROM ingresses WHERE default_backend_service IS NOT NULL",
+		"SELECT name FROM deployments WHERE replicas < 2.5 AND replicas <> NULL",
+	}
+	for _, input := range tests {
+		if _, err := New(input).Parse(); err != nil {
+			t.Errorf("%q: %v", input, err)
+		}
+	}
+}
+
+func TestParseWhereErrors(t *testing.T) {
+	tests := []string{
+		"SELECT name FROM deployments WHERE name =",
+		"SELECT name FROM deployments WHERE name IS",
+		"SELECT name FROM deployments WHERE (name = 'web'",
+	}
+	for _, input := range tests {
+		if _, err := New(input).Parse(); err == nil {
+			t.Errorf("%q: expected parse error", input)
+		}
+	}
+}
+
 func TestParseErrors(t *testing.T) {
 	tests := []struct {
 		name  string
