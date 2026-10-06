@@ -147,7 +147,7 @@ VALUES ('{"apiVersion":"apps/v1","kind":"Deployment",...}');
 - 同名对象已存在时返回 `AlreadyExists`，不能隐式更新或删除重建。
 - SQL 字符串由 lexer 处理单引号和两个单引号转义，JSON 内容交给 Go 的 `encoding/json`。
 
-### 阶段 6：动态资源和内置资源（hard）
+### 阶段 6：动态资源和内置资源（hard，进行中）
 
 通过 API Discovery 获取资源的 group、version、resource、scope 和 verbs，并使用 `dynamic.Interface` 与 `unstructured.Unstructured` 支持集群实际提供的资源。
 
@@ -160,6 +160,16 @@ VALUES ('{"apiVersion":"apps/v1","kind":"Deployment",...}');
 - 根据 Discovery 返回的 `scope` 判断 namespace 是否适用。
 - 根据资源实际 `verbs` 判断 `SELECT`、`INSERT`、`UPDATE`、`DELETE` 是否支持。
 - 资源不存在或 Discovery 失败时返回可区分的错误，而不是统一伪装成 SQL 错误。
+
+当前已完成动态查询基础：Discovery Resolver 会解析普通资源名和精确的
+`"group/version/resource"` 引用，Dynamic Client 会读取 namespaced 或集群级
+资源，并支持 `name`、`namespace` 和 `/spec/...` 等字段路径。查询前会检查
+Discovery 返回的 `list` verb；资源不支持列举时返回 `E_UNSUPPORTED_VERB`。
+动态 `DELETE` 已支持：执行前检查 `list`/`delete` verbs，必须带 `WHERE`，并逐个对象处理失败。
+动态 `UPDATE` 已支持使用双引号 JSON Pointer 列，例如 `SET "/spec/replicas" = 3`；
+执行前检查 `list`/`patch` verbs，并保留 `metadata.resourceVersion` 并发检查。
+动态 `INSERT` 已支持使用 `manifest` JSON 创建资源，并检查 `create` verb、apiVersion、kind、namespace 和服务器管理字段。
+JSON 类型转换、Metrics 和 CRD 将在后续步骤实现。
 
 ### 阶段 7：Metrics 和 CRD（hard）
 
@@ -196,12 +206,35 @@ namespace 选择规则：
 
 使用 `--output json` 时，查询结果始终为 JSON 数组；数字保持 JSON 数字，空值输出为 JSON `null`。测试按行集合比较，不依赖行顺序和 JSON 对象键顺序，除非具体测试另有说明。
 
+### 错误输出和退出码
+
+错误统一写入 `stderr`，每次失败输出一个 JSON 对象，不把 Kubernetes 原始响应或内部堆栈直接暴露给调用者：
+
+```json
+{"code":"E_PARSE","line":1,"column":14,"message":"expected column name, got \"FROM\""}
+```
+
+常见错误码包括：
+
+| 错误码 | 含义 |
+| --- | --- |
+| `E_USAGE` | 命令行参数或输出格式错误 |
+| `E_PARSE` | SQL 语法错误，包含行列位置 |
+| `E_SEMANTIC` | 未知表、列或不支持的 SQL 操作 |
+| `E_EVAL` | `WHERE` 表达式求值错误 |
+| `E_WHERE_REQUIRED` | `UPDATE` 或 `DELETE` 缺少 `WHERE` |
+| `E_KUBE` | Kubernetes API 或客户端错误 |
+| `E_OUTPUT` | JSON 输出失败 |
+
+退出码约定为：`0` 表示成功，`1` 表示 Kubernetes、输出错误或写操作部分失败，`2` 表示参数、解析、语义或表达式错误。写操作即使部分对象失败，也会先在 `stdout` 输出结果 JSON，再返回退出码 `1`。
+
 ## 推荐架构
 
 目录按职责拆分，避免在单个文件堆积解析、业务和 API 逻辑：
 
 ```text
-cmd/ksql/main.go       命令行参数、输入读取、退出码
+cmd/ksql/main.go       进程入口
+internal/cli/           命令行参数、输入读取、流程编排和退出码
 internal/lexer/        逐字符词法分析
 internal/parser/       递归下降语法分析
 internal/ast/           AST 数据结构
