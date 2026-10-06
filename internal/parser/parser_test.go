@@ -146,6 +146,29 @@ func TestParseWhereErrors(t *testing.T) {
 	}
 }
 
+func TestParseQuotedResourceAndJSONPointerWithAlias(t *testing.T) {
+	statement, err := New(`SELECT name, "/spec/replicas" AS replicas FROM "apps/v1/statefulsets" WHERE "/spec/replicas" >= 2`).Parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	selectStatement := statement.(*ast.SelectStatement)
+	if selectStatement.Table != "apps/v1/statefulsets" || !selectStatement.TableQuoted {
+		t.Fatalf("table: %#v", selectStatement)
+	}
+	column, ok := selectStatement.Columns[1].(*ast.Column)
+	if !ok || column.Name != "/spec/replicas" || !column.Quoted || column.Alias != "replicas" || column.AliasQuoted {
+		t.Fatalf("column: %#v", selectStatement.Columns[1])
+	}
+	where, ok := selectStatement.Where.(*ast.BinaryExpression)
+	if !ok {
+		t.Fatalf("where: %#v", selectStatement.Where)
+	}
+	left, ok := where.Left.(*ast.ColumnReference)
+	if !ok || left.Name != "/spec/replicas" || !left.Quoted {
+		t.Fatalf("where left: %#v", where.Left)
+	}
+}
+
 func TestParseErrors(t *testing.T) {
 	tests := []struct {
 		name  string

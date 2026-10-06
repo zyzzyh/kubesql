@@ -54,11 +54,11 @@ func (p *Parser) parseInsert() (*ast.InsertStatement, error) {
 	if err := p.expect(token.Into, "INTO"); err != nil {
 		return nil, err
 	}
-	if p.current.Type != token.Identifier {
-		return nil, expected("table name", p.current)
+	table, quoted, err := p.parseIdentifier("table name")
+	if err != nil {
+		return nil, err
 	}
-	statement := &ast.InsertStatement{Type: "insert", Table: p.current.Literal}
-	p.advance()
+	statement := &ast.InsertStatement{Type: "insert", Table: table, TableQuoted: quoted}
 	if err := p.expect(token.LeftParen, "("); err != nil {
 		return nil, err
 	}
@@ -90,11 +90,11 @@ func (p *Parser) parseInsert() (*ast.InsertStatement, error) {
 func (p *Parser) parseInsertColumns() ([]string, error) {
 	columns := make([]string, 0, 1)
 	for {
-		if p.current.Type != token.Identifier {
-			return nil, expected("column name", p.current)
+		column, _, err := p.parseIdentifier("column name")
+		if err != nil {
+			return nil, err
 		}
-		columns = append(columns, p.current.Literal)
-		p.advance()
+		columns = append(columns, column)
 		if p.current.Type != token.Comma {
 			return columns, nil
 		}
@@ -104,11 +104,11 @@ func (p *Parser) parseInsertColumns() ([]string, error) {
 
 func (p *Parser) parseUpdate() (*ast.UpdateStatement, error) {
 	p.advance()
-	if p.current.Type != token.Identifier {
-		return nil, expected("table name", p.current)
+	table, quoted, err := p.parseIdentifier("table name")
+	if err != nil {
+		return nil, err
 	}
-	statement := &ast.UpdateStatement{Type: "update", Table: p.current.Literal}
-	p.advance()
+	statement := &ast.UpdateStatement{Type: "update", Table: table, TableQuoted: quoted}
 	if err := p.expect(token.Set, "SET"); err != nil {
 		return nil, err
 	}
@@ -130,11 +130,10 @@ func (p *Parser) parseUpdate() (*ast.UpdateStatement, error) {
 func (p *Parser) parseAssignments() ([]ast.Assignment, error) {
 	assignments := make([]ast.Assignment, 0, 1)
 	for {
-		if p.current.Type != token.Identifier {
-			return nil, expected("column name", p.current)
+		column, quoted, err := p.parseIdentifier("column name")
+		if err != nil {
+			return nil, err
 		}
-		column := p.current.Literal
-		p.advance()
 		if err := p.expect(token.Equal, "="); err != nil {
 			return nil, err
 		}
@@ -142,7 +141,7 @@ func (p *Parser) parseAssignments() ([]ast.Assignment, error) {
 		if err != nil {
 			return nil, err
 		}
-		assignments = append(assignments, ast.Assignment{Column: column, Value: value})
+		assignments = append(assignments, ast.Assignment{Column: column, ColumnQuoted: quoted, Value: value})
 		if p.current.Type != token.Comma {
 			return assignments, nil
 		}
@@ -155,11 +154,11 @@ func (p *Parser) parseDelete() (*ast.DeleteStatement, error) {
 	if err := p.expect(token.From, "FROM"); err != nil {
 		return nil, err
 	}
-	if p.current.Type != token.Identifier {
-		return nil, expected("table name", p.current)
+	table, quoted, err := p.parseIdentifier("table name")
+	if err != nil {
+		return nil, err
 	}
-	statement := &ast.DeleteStatement{Type: "delete", Table: p.current.Literal}
-	p.advance()
+	statement := &ast.DeleteStatement{Type: "delete", Table: table, TableQuoted: quoted}
 	var where ast.Expression
 	if p.current.Type == token.Where {
 		p.advance()
@@ -183,12 +182,10 @@ func (p *Parser) parseSelect() (*ast.SelectStatement, error) {
 	if err := p.expect(token.From, "FROM"); err != nil {
 		return nil, err
 	}
-	if p.current.Type != token.Identifier {
-		return nil, expected("table name", p.current)
+	table, quoted, err := p.parseIdentifier("table name")
+	if err != nil {
+		return nil, err
 	}
-
-	table := p.current.Literal
-	p.advance()
 
 	var where ast.Expression
 	if p.current.Type == token.Where {
@@ -198,7 +195,7 @@ func (p *Parser) parseSelect() (*ast.SelectStatement, error) {
 			return nil, err
 		}
 	}
-	return &ast.SelectStatement{Type: "select", Columns: columns, Table: table, Where: where}, nil
+	return &ast.SelectStatement{Type: "select", Columns: columns, Table: table, TableQuoted: quoted, Where: where}, nil
 }
 
 func (p *Parser) parseSelectList() ([]ast.SelectItem, error) {
@@ -224,11 +221,20 @@ func (p *Parser) parseSelectList() ([]ast.SelectItem, error) {
 }
 
 func (p *Parser) parseColumn() (*ast.Column, error) {
-	if p.current.Type != token.Identifier {
-		return nil, expected("column name", p.current)
+	name, quoted, err := p.parseIdentifier("column name")
+	if err != nil {
+		return nil, err
 	}
-	column := &ast.Column{Type: "column", Name: p.current.Literal}
-	p.advance()
+	column := &ast.Column{Type: "column", Name: name, Quoted: quoted}
+	if p.current.Type == token.As {
+		p.advance()
+		alias, aliasQuoted, err := p.parseIdentifier("alias")
+		if err != nil {
+			return nil, err
+		}
+		column.Alias = alias
+		column.AliasQuoted = aliasQuoted
+	}
 	return column, nil
 }
 
@@ -318,9 +324,9 @@ func (p *Parser) parseComparison() (ast.Expression, error) {
 func (p *Parser) parsePrimary() (ast.Expression, error) {
 	current := p.current
 	switch current.Type {
-	case token.Identifier:
+	case token.Identifier, token.QuotedIdentifier:
 		p.advance()
-		return &ast.ColumnReference{Type: "column_reference", Name: current.Literal}, nil
+		return &ast.ColumnReference{Type: "column_reference", Name: current.Literal, Quoted: current.Type == token.QuotedIdentifier}, nil
 	case token.String:
 		p.advance()
 		return &ast.Literal{Type: "literal", Kind: "string", Value: current.Literal}, nil
@@ -374,6 +380,16 @@ func (p *Parser) expect(kind token.Type, name string) error {
 	}
 	p.advance()
 	return nil
+}
+
+func (p *Parser) parseIdentifier(name string) (string, bool, error) {
+	if p.current.Type != token.Identifier && p.current.Type != token.QuotedIdentifier {
+		return "", false, expected(name, p.current)
+	}
+	quoted := p.current.Type == token.QuotedIdentifier
+	literal := p.current.Literal
+	p.advance()
+	return literal, quoted, nil
 }
 
 func (p *Parser) advance() {

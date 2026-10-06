@@ -8,14 +8,16 @@ type Statement interface {
 
 // Assignment updates one writable resource field.
 type Assignment struct {
-	Column string     `json:"column"`
-	Value  Expression `json:"value"`
+	Column       string     `json:"column"`
+	ColumnQuoted bool       `json:"column_quoted,omitempty"`
+	Value        Expression `json:"value"`
 }
 
 // UpdateStatement describes an UPDATE statement.
 type UpdateStatement struct {
 	Type        string       `json:"type"`
 	Table       string       `json:"table"`
+	TableQuoted bool         `json:"table_quoted,omitempty"`
 	Assignments []Assignment `json:"assignments"`
 	Where       Expression   `json:"where"`
 }
@@ -24,19 +26,21 @@ func (*UpdateStatement) statementNode() {}
 
 // DeleteStatement describes a DELETE statement.
 type DeleteStatement struct {
-	Type  string     `json:"type"`
-	Table string     `json:"table"`
-	Where Expression `json:"where"`
+	Type        string     `json:"type"`
+	Table       string     `json:"table"`
+	TableQuoted bool       `json:"table_quoted,omitempty"`
+	Where       Expression `json:"where"`
 }
 
 func (*DeleteStatement) statementNode() {}
 
 // InsertStatement describes one INSERT statement with one VALUES tuple.
 type InsertStatement struct {
-	Type    string       `json:"type"`
-	Table   string       `json:"table"`
-	Columns []string     `json:"columns"`
-	Values  []Expression `json:"values"`
+	Type        string       `json:"type"`
+	Table       string       `json:"table"`
+	TableQuoted bool         `json:"table_quoted,omitempty"`
+	Columns     []string     `json:"columns"`
+	Values      []Expression `json:"values"`
 }
 
 func (*InsertStatement) statementNode() {}
@@ -48,18 +52,22 @@ type SelectItem interface {
 
 // SelectStatement describes the selected columns and source table.
 type SelectStatement struct {
-	Type    string       `json:"type"`
-	Columns []SelectItem `json:"columns"`
-	Table   string       `json:"table"`
-	Where   Expression   `json:"where,omitempty"`
+	Type        string       `json:"type"`
+	Columns     []SelectItem `json:"columns"`
+	Table       string       `json:"table"`
+	TableQuoted bool         `json:"table_quoted,omitempty"`
+	Where       Expression   `json:"where,omitempty"`
 }
 
 func (*SelectStatement) statementNode() {}
 
 // Column selects one named column.
 type Column struct {
-	Type string `json:"type"`
-	Name string `json:"name"`
+	Type        string `json:"type"`
+	Name        string `json:"name"`
+	Quoted      bool   `json:"quoted,omitempty"`
+	Alias       string `json:"alias,omitempty"`
+	AliasQuoted bool   `json:"alias_quoted,omitempty"`
 }
 
 func (*Column) selectItemNode() {}
@@ -78,8 +86,9 @@ type Expression interface {
 
 // ColumnReference reads a value from the current resource row.
 type ColumnReference struct {
-	Type string `json:"type"`
-	Name string `json:"name"`
+	Type   string `json:"type"`
+	Name   string `json:"name"`
+	Quoted bool   `json:"quoted,omitempty"`
 }
 
 func (*ColumnReference) expressionNode() {}

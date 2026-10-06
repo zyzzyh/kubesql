@@ -18,6 +18,12 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("%s at %d:%d: %s", e.Code, e.Line, e.Column, e.Message)
 }
 
+// CodeValue and Position let shared error output preserve parser locations
+// without making parser depend on the application error package.
+func (e *Error) CodeValue() string { return e.Code }
+
+func (e *Error) Position() (int, int) { return e.Line, e.Column }
+
 func expected(want string, got token.Token) error {
 	found := got.Literal
 	if got.Type == token.EOF {
