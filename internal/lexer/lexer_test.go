@@ -118,3 +118,29 @@ func TestNextTokenUnterminatedStringIsIllegal(t *testing.T) {
 		t.Fatalf("token: got %#v, want illegal unterminated string", got)
 	}
 }
+
+func TestNextTokenQuotedIdentifiers(t *testing.T) {
+	lexer := New(`SELECT "/spec/replicas" AS replicas FROM "apps/v1/statefulsets"`)
+	want := []token.Token{
+		{Type: token.Select, Literal: "SELECT", Line: 1, Column: 1},
+		{Type: token.QuotedIdentifier, Literal: "/spec/replicas", Line: 1, Column: 8},
+		{Type: token.As, Literal: "AS", Line: 1, Column: 25},
+		{Type: token.Identifier, Literal: "replicas", Line: 1, Column: 28},
+		{Type: token.From, Literal: "FROM", Line: 1, Column: 37},
+		{Type: token.QuotedIdentifier, Literal: "apps/v1/statefulsets", Line: 1, Column: 42},
+		{Type: token.EOF, Line: 1, Column: 64},
+	}
+	for index, expected := range want {
+		if got := lexer.NextToken(); got != expected {
+			t.Fatalf("token %d: got %#v, want %#v", index, got, expected)
+		}
+	}
+}
+
+func TestNextTokenQuotedIdentifierEscaping(t *testing.T) {
+	got := New(`"a""b"`).NextToken()
+	want := token.Token{Type: token.QuotedIdentifier, Literal: `a"b`, Line: 1, Column: 1}
+	if got != want {
+		t.Fatalf("token: got %#v, want %#v", got, want)
+	}
+}

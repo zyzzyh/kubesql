@@ -59,6 +59,9 @@ func (l *Lexer) NextToken() token.Token {
 	if current == '\'' {
 		return l.readString(line, column)
 	}
+	if current == '"' {
+		return l.readQuotedIdentifier(line, column)
+	}
 	if current >= '0' && current <= '9' {
 		return l.readNumber(line, column)
 	}
@@ -112,6 +115,29 @@ func (l *Lexer) readString(line, column int) token.Token {
 				continue
 			}
 			return token.Token{Type: token.String, Literal: value.String(), Line: line, Column: column}
+		}
+		value.WriteRune(current)
+		l.advance()
+	}
+	return token.Token{Type: token.Illegal, Literal: value.String(), Line: line, Column: column}
+}
+
+// readQuotedIdentifier reads a SQL delimited identifier. Unlike a string,
+// its value is kept as an identifier so keywords and punctuation can appear
+// inside names such as "apps/v1/statefulsets" or "/spec/replicas".
+func (l *Lexer) readQuotedIdentifier(line, column int) token.Token {
+	l.advance()
+	var value strings.Builder
+	for l.position < len(l.input) {
+		current := l.input[l.position]
+		if current == '"' {
+			l.advance()
+			if l.position < len(l.input) && l.input[l.position] == '"' {
+				value.WriteRune('"')
+				l.advance()
+				continue
+			}
+			return token.Token{Type: token.QuotedIdentifier, Literal: value.String(), Line: line, Column: column}
 		}
 		value.WriteRune(current)
 		l.advance()
@@ -212,6 +238,8 @@ func keywordType(literal string) token.Type {
 		return token.True
 	case "FALSE":
 		return token.False
+	case "AS":
+		return token.As
 	default:
 		return token.Identifier
 	}
