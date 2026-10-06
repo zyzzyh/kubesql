@@ -19,6 +19,14 @@ type Table struct {
 	Namespaced       bool
 	Columns          []Column
 	SupportsAllNames bool
+	Dynamic          bool
+}
+
+// Projection maps a resource field to the key returned in one result row.
+// Source and Output are separate because SQL aliases rename output only.
+type Projection struct {
+	Source string
+	Output string
 }
 
 var tables = map[string]Table{
@@ -39,9 +47,50 @@ var tables = map[string]Table{
 	},
 }
 
+// IsKnownTable reports whether a statement targets a typed built-in table.
+func IsKnownTable(statement *ast.SelectStatement) bool {
+	name := statement.Table
+	if !statement.TableQuoted {
+		name = strings.ToLower(name)
+	}
+	_, ok := tables[name]
+	return ok
+}
+
+// ResolveDynamic creates projections for a resource whose schema is discovered
+// at runtime. Field validation is deferred until unstructured objects arrive.
+func ResolveDynamic(statement *ast.SelectStatement) (Table, []Projection, error) {
+	table := Table{Name: statement.Table, Dynamic: true}
+	if len(statement.Columns) == 1 {
+		if _, ok := statement.Columns[0].(*ast.Star); ok {
+			return table, []Projection{{Source: "*", Output: "*"}}, nil
+		}
+	}
+	columns := make([]Projection, 0, len(statement.Columns))
+	for _, item := range statement.Columns {
+		column, ok := item.(*ast.Column)
+		if !ok {
+			return Table{}, nil, fmt.Errorf("E_SEMANTIC: star cannot be combined with other columns")
+		}
+		name := column.Name
+		if !column.Quoted {
+			name = strings.ToLower(name)
+		}
+		output := column.Alias
+		if output == "" {
+			output = name
+		}
+		columns = append(columns, Projection{Source: name, Output: output})
+	}
+	return table, columns, nil
+}
+
 // Resolve validates a SELECT target before any Kubernetes request is made.
-func Resolve(statement *ast.SelectStatement) (Table, []string, error) {
-	tableName := strings.ToLower(statement.Table)
+func Resolve(statement *ast.SelectStatement) (Table, []Projection, error) {
+	tableName := statement.Table
+	if !statement.TableQuoted {
+		tableName = strings.ToLower(tableName)
+	}
 	table, ok := tables[tableName]
 	if !ok {
 		return Table{}, nil, fmt.Errorf("E_SEMANTIC: unknown table %q", statement.Table)
@@ -49,9 +98,9 @@ func Resolve(statement *ast.SelectStatement) (Table, []string, error) {
 
 	if len(statement.Columns) == 1 {
 		if _, ok := statement.Columns[0].(*ast.Star); ok {
-			columns := make([]string, 0, len(table.Columns))
+			columns := make([]Projection, 0, len(table.Columns))
 			for _, column := range table.Columns {
-				columns = append(columns, column.Name)
+				columns = append(columns, Projection{Source: column.Name, Output: column.Name})
 			}
 			if err := validateExpression(table, statement.Where); err != nil {
 				return Table{}, nil, err
@@ -60,17 +109,24 @@ func Resolve(statement *ast.SelectStatement) (Table, []string, error) {
 		}
 	}
 
-	columns := make([]string, 0, len(statement.Columns))
+	columns := make([]Projection, 0, len(statement.Columns))
 	for _, item := range statement.Columns {
 		column, ok := item.(*ast.Column)
 		if !ok {
 			return Table{}, nil, fmt.Errorf("E_SEMANTIC: star cannot be combined with other columns")
 		}
-		name := strings.ToLower(column.Name)
+		name := column.Name
+		if !column.Quoted {
+			name = strings.ToLower(name)
+		}
 		if !hasColumn(table, name) {
 			return Table{}, nil, fmt.Errorf("E_SEMANTIC: unknown column %q for table %q", column.Name, table.Name)
 		}
-		columns = append(columns, name)
+		output := column.Alias
+		if output == "" {
+			output = name
+		}
+		columns = append(columns, Projection{Source: name, Output: output})
 	}
 	if err := validateExpression(table, statement.Where); err != nil {
 		return Table{}, nil, err

@@ -4,17 +4,23 @@ package query
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/zyzzyh/kubesql/internal/ast"
 	"github.com/zyzzyh/kubesql/internal/catalog"
+	"github.com/zyzzyh/kubesql/internal/discovery"
 	"github.com/zyzzyh/kubesql/internal/eval"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 )
 
 // Executor reads supported Kubernetes resources and projects public columns.
 type Executor struct {
 	client        kubernetes.Interface
+	dynamicClient dynamic.Interface
+	resolver      *discovery.Resolver
 	namespace     string
 	allNamespaces bool
 }
@@ -24,11 +30,36 @@ func NewExecutor(client kubernetes.Interface, namespace string, allNamespaces bo
 	return &Executor{client: client, namespace: namespace, allNamespaces: allNamespaces}
 }
 
+// NewDynamicExecutor adds runtime-discovered resources while preserving the
+// typed path used by the original built-in tables.
+func NewDynamicExecutor(client kubernetes.Interface, dynamicClient dynamic.Interface, resolver *discovery.Resolver, namespace string, allNamespaces bool) *Executor {
+	return &Executor{client: client, dynamicClient: dynamicClient, resolver: resolver, namespace: namespace, allNamespaces: allNamespaces}
+}
+
 // Execute validates and runs one SELECT statement.
 func (e *Executor) Execute(ctx context.Context, statement *ast.SelectStatement) ([]map[string]any, error) {
 	table, columns, err := catalog.Resolve(statement)
 	if err != nil {
-		return nil, err
+		if e.dynamicClient == nil || e.resolver == nil || catalog.IsKnownTable(statement) {
+			return nil, err
+		}
+		table, columns, err = catalog.ResolveDynamic(statement)
+		if err != nil {
+			return nil, err
+		}
+		exact := statement.TableQuoted && strings.Contains(statement.Table, "/")
+		resource, resolveErr := e.resolver.Resolve(statement.Table, exact)
+		if resolveErr != nil && resource.GVR.Resource == "" {
+			return nil, resolveErr
+		}
+		if !resource.Verbs["list"] {
+			return nil, fmt.Errorf("E_UNSUPPORTED_VERB: resource %q does not support SELECT/list", statement.Table)
+		}
+		table.Namespaced = resource.Namespaced
+		if table.Namespaced && e.allNamespaces {
+			return e.executeDynamic(ctx, resource, columns, "", statement.Where)
+		}
+		return e.executeDynamic(ctx, resource, columns, e.namespace, statement.Where)
 	}
 	if table.Namespaced && e.allNamespaces {
 		return e.executeAllNamespaces(ctx, table.Name, columns, statement.Where)
@@ -36,7 +67,25 @@ func (e *Executor) Execute(ctx context.Context, statement *ast.SelectStatement) 
 	return e.executeNamespace(ctx, table.Name, columns, e.namespace, statement.Where)
 }
 
-func (e *Executor) executeNamespace(ctx context.Context, tableName string, columns []string, namespace string, where ast.Expression) ([]map[string]any, error) {
+func (e *Executor) executeDynamic(ctx context.Context, resource discovery.Resource, columns []catalog.Projection, namespace string, where ast.Expression) ([]map[string]any, error) {
+	var items *unstructured.UnstructuredList
+	var err error
+	if resource.Namespaced {
+		items, err = e.dynamicClient.Resource(resource.GVR).Namespace(namespace).List(ctx, metav1.ListOptions{})
+	} else {
+		items, err = e.dynamicClient.Resource(resource.GVR).List(ctx, metav1.ListOptions{})
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list %s: %w", resource.GVR.Resource, err)
+	}
+	rows := make([]resourceRow, 0, len(items.Items))
+	for _, item := range items.Items {
+		rows = append(rows, resourceRow{dynamic: item.Object})
+	}
+	return filterAndProject(resourceList{rows: rows}, columns, where)
+}
+
+func (e *Executor) executeNamespace(ctx context.Context, tableName string, columns []catalog.Projection, namespace string, where ast.Expression) ([]map[string]any, error) {
 	resources, err := e.list(ctx, tableName, namespace)
 	if err != nil {
 		return nil, err
@@ -44,11 +93,11 @@ func (e *Executor) executeNamespace(ctx context.Context, tableName string, colum
 	return filterAndProject(resources, columns, where)
 }
 
-func (e *Executor) executeAllNamespaces(ctx context.Context, tableName string, columns []string, where ast.Expression) ([]map[string]any, error) {
+func (e *Executor) executeAllNamespaces(ctx context.Context, tableName string, columns []catalog.Projection, where ast.Expression) ([]map[string]any, error) {
 	return e.executeNamespace(ctx, tableName, columns, "", where)
 }
 
-func filterAndProject(resources resourceList, columns []string, where ast.Expression) ([]map[string]any, error) {
+func filterAndProject(resources resourceList, columns []catalog.Projection, where ast.Expression) ([]map[string]any, error) {
 	result := make([]map[string]any, 0, len(resources.rows))
 	for _, resource := range resources.rows {
 		values := resource.values()
@@ -63,7 +112,13 @@ func filterAndProject(resources resourceList, columns []string, where ast.Expres
 		}
 		row := make(map[string]any, len(columns))
 		for _, column := range columns {
-			row[column] = values[column]
+			if column.Source == "*" {
+				for key, value := range values {
+					row[key] = value
+				}
+				continue
+			}
+			row[column.Output] = values[column.Source]
 		}
 		result = append(result, row)
 	}

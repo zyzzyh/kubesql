@@ -104,6 +104,23 @@ func TestExecuteWhereFiltersRows(t *testing.T) {
 	}
 }
 
+func TestExecuteProjectsColumnAlias(t *testing.T) {
+	replicas := int32(2)
+	client := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "web", Namespace: "demo"},
+		Spec:       appsv1.DeploymentSpec{Replicas: &replicas},
+	})
+	statement := parseSelect(t, "SELECT name AS resource_name FROM deployments")
+	rows, err := NewExecutor(client, "demo", false).Execute(context.Background(), statement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []map[string]any{{"resource_name": "web"}}
+	if !reflect.DeepEqual(rows, want) {
+		t.Fatalf("rows: got %#v, want %#v", rows, want)
+	}
+}
+
 func TestExecuteWhereHonorsAndBeforeOr(t *testing.T) {
 	one, three := int32(1), int32(3)
 	client := fake.NewSimpleClientset(

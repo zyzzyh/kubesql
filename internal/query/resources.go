@@ -4,6 +4,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 type resourceRow struct {
@@ -11,6 +12,7 @@ type resourceRow struct {
 	namespace             string
 	replicas              any
 	defaultBackendService any
+	dynamic               map[string]any
 }
 
 type resourceList struct {
@@ -18,11 +20,37 @@ type resourceList struct {
 }
 
 func (r resourceRow) values() map[string]any {
+	if r.dynamic != nil {
+		return flattenDynamic(r.dynamic)
+	}
 	return map[string]any{
 		"name":                    r.name,
 		"namespace":               r.namespace,
 		"replicas":                r.replicas,
 		"default_backend_service": r.defaultBackendService,
+	}
+}
+
+func flattenDynamic(object map[string]any) map[string]any {
+	values := make(map[string]any, len(object)+2)
+	values["name"], _, _ = unstructured.NestedString(object, "metadata", "name")
+	values["namespace"], _, _ = unstructured.NestedString(object, "metadata", "namespace")
+	for key, value := range object {
+		values[key] = value
+		flattenNested(values, "/"+key, value)
+	}
+	return values
+}
+
+func flattenNested(values map[string]any, prefix string, value any) {
+	child, ok := value.(map[string]any)
+	if !ok {
+		return
+	}
+	for key, item := range child {
+		path := prefix + "/" + key
+		values[path] = item
+		flattenNested(values, path, item)
 	}
 }
 
