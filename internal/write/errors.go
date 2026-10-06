@@ -1,16 +1,16 @@
 package write
 
 import (
+	"github.com/zyzzyh/kubesql/internal/apperror"
 	"github.com/zyzzyh/kubesql/internal/ast"
 	"github.com/zyzzyh/kubesql/internal/eval"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 func addError(result *Result, resource, namespace, name string, err error) {
-	reason := err.Error()
-	if apierrors.IsAlreadyExists(err) {
+	reason := apperror.ReasonOf(err)
+	if reason == apperror.CodeAlreadyExists {
 		reason = "AlreadyExists"
-	} else if apierrors.IsNotFound(err) {
+	} else if reason == apperror.CodeNotFound {
 		reason = "NotFound"
 	}
 	result.Errors = append(result.Errors, ObjectError{Resource: resource, Namespace: namespace, Name: name, Reason: reason})
