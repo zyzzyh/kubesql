@@ -1,5 +1,8 @@
 package eval
 
+// SQL conditions have three outcomes. UNKNOWN represents a comparison that
+// involves NULL; it is preserved by NOT and can be resolved by AND or OR when
+// the other operand is decisive.
 func truth(condition bool) Truth {
 	if condition {
 		return True

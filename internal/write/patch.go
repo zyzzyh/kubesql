@@ -14,6 +14,9 @@ type patchBuilder struct {
 func newPatchBuilder(resourceVersion string) *patchBuilder {
 	builder := &patchBuilder{}
 	if resourceVersion != "" {
+		// Test the version before changing fields. If another writer updated the
+		// object after our List request, the API server rejects this patch instead
+		// of allowing a stale read to overwrite newer data.
 		builder.operations = append(builder.operations, map[string]any{
 			"op": "test", "path": "/metadata/resourceVersion", "value": resourceVersion,
 		})

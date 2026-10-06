@@ -232,7 +232,10 @@ func (p *Parser) parseColumn() (*ast.Column, error) {
 	return column, nil
 }
 
-// parseExpression applies SQL boolean precedence: NOT, then AND, then OR.
+// The call chain below mirrors SQL precedence from low to high:
+// OR -> AND -> NOT -> comparison. Each higher-level parser consumes a
+// complete lower-precedence expression, so the resulting AST has the same
+// grouping as SQL without a separate precedence table.
 func (p *Parser) parseExpression() (ast.Expression, error) {
 	return p.parseOr()
 }

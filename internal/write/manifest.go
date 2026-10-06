@@ -19,6 +19,10 @@ type manifest struct {
 }
 
 func decodeManifest(statement *ast.InsertStatement, namespace string) (manifest, error) {
+	// INSERT has two independent parsing layers: the SQL lexer has already
+	// decoded the outer string literal, and encoding/json now validates the
+	// Kubernetes manifest contained inside that string. Keeping them separate
+	// prevents SQL escaping rules from being mixed with JSON parsing.
 	table := strings.ToLower(statement.Table)
 	if !supportedInsertTable(table) {
 		return manifest{}, fmt.Errorf("E_SEMANTIC: unknown table %q", statement.Table)
