@@ -10,6 +10,8 @@ import (
 )
 
 func (e *Executor) delete(ctx context.Context, statement *ast.DeleteStatement) (Result, error) {
+	// delete lists fixed typed resources, evaluates WHERE locally, and deletes
+	// each matching object while accumulating per-object failures.
 	if statement.Where == nil {
 		return Result{}, fmt.Errorf("E_WHERE_REQUIRED: DELETE requires WHERE")
 	}

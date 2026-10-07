@@ -43,6 +43,7 @@ func NewResolver(client k8sdiscovery.DiscoveryInterface) *Resolver {
 // Resolve resolves either a plain resource name or an exact versioned
 // reference. Plain names select the preferred version within one API group.
 func (r *Resolver) Resolve(reference string, exact bool) (Resource, error) {
+	// Resolve maps a SQL resource name to GVR, scope, kind, and supported verbs.
 	if r == nil || r.client == nil {
 		return Resource{}, fmt.Errorf("E_DISCOVERY: discovery client is nil")
 	}

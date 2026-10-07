@@ -42,6 +42,8 @@ func (p *patchBuilder) bytes() ([]byte, error) {
 }
 
 func buildPatch(resourceVersion string, assignments []ast.Assignment, table string, object map[string]any) ([]byte, error) {
+	// buildPatch translates typed assignments into a resourceVersion-guarded
+	// JSON Patch without replacing the complete Kubernetes object.
 	builder := newPatchBuilder(resourceVersion)
 	for _, assignment := range assignments {
 		value, err := literalValue(assignment.Value)

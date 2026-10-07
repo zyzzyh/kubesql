@@ -11,6 +11,8 @@ import (
 )
 
 func (e *Executor) deleteDynamic(ctx context.Context, statement *ast.DeleteStatement) (Result, error) {
+	// deleteDynamic evaluates WHERE over listed objects and reports per-object
+	// failures instead of aborting the whole multi-object operation.
 	if statement.Where == nil {
 		return Result{}, fmt.Errorf("E_WHERE_REQUIRED: DELETE requires WHERE")
 	}

@@ -38,6 +38,8 @@ func NewDynamicExecutor(client kubernetes.Interface, dynamicClient dynamic.Inter
 
 // Execute validates and runs one SELECT statement.
 func (e *Executor) Execute(ctx context.Context, statement *ast.SelectStatement) ([]map[string]any, error) {
+	// Execute resolves semantics before accessing Kubernetes, then selects the
+	// typed adapter or Discovery-backed dynamic adapter.
 	table, columns, err := catalog.Resolve(statement)
 	if err != nil {
 		if e.dynamicClient == nil || e.resolver == nil || catalog.IsKnownTable(statement) {
@@ -98,6 +100,7 @@ func (e *Executor) executeAllNamespaces(ctx context.Context, tableName string, c
 }
 
 func filterAndProject(resources resourceList, columns []catalog.Projection, where ast.Expression) ([]map[string]any, error) {
+	// filterAndProject applies SQL three-valued filtering and builds aliased rows.
 	result := make([]map[string]any, 0, len(resources.rows))
 	for _, resource := range resources.rows {
 		values := resource.values()

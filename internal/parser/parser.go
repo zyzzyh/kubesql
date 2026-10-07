@@ -21,7 +21,8 @@ func New(input string) *Parser {
 	return &Parser{lexer: l, current: l.NextToken()}
 }
 
-// Parse parses one supported statement, an optional semicolon, and EOF.
+// Parse parses one supported statement, an optional semicolon, and EOF without
+// making any Kubernetes request.
 func (p *Parser) Parse() (ast.Statement, error) {
 	var statement ast.Statement
 	var err error
@@ -49,6 +50,8 @@ func (p *Parser) Parse() (ast.Statement, error) {
 	return statement, nil
 }
 
+// parseInsert parses the manifest column and value tuple; JSON is validated
+// later by the write executor.
 func (p *Parser) parseInsert() (*ast.InsertStatement, error) {
 	p.advance()
 	if err := p.expect(token.Into, "INTO"); err != nil {
@@ -102,6 +105,7 @@ func (p *Parser) parseInsertColumns() ([]string, error) {
 	}
 }
 
+// parseUpdate parses assignments followed by an optional WHERE expression.
 func (p *Parser) parseUpdate() (*ast.UpdateStatement, error) {
 	p.advance()
 	table, quoted, err := p.parseIdentifier("table name")
@@ -149,6 +153,7 @@ func (p *Parser) parseAssignments() ([]ast.Assignment, error) {
 	}
 }
 
+// parseDelete parses a target table and its filtering expression.
 func (p *Parser) parseDelete() (*ast.DeleteStatement, error) {
 	p.advance()
 	if err := p.expect(token.From, "FROM"); err != nil {
@@ -172,6 +177,7 @@ func (p *Parser) parseDelete() (*ast.DeleteStatement, error) {
 	return statement, nil
 }
 
+// parseSelect parses projections, a source table, and an optional WHERE.
 func (p *Parser) parseSelect() (*ast.SelectStatement, error) {
 	p.advance() // SELECT was checked by Parse.
 

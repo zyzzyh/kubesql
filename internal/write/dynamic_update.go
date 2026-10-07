@@ -13,6 +13,8 @@ import (
 )
 
 func (e *Executor) updateDynamic(ctx context.Context, statement *ast.UpdateStatement) (Result, error) {
+	// updateDynamic patches discovered resources with JSON Pointers and a
+	// resourceVersion test so stale reads cannot overwrite newer objects.
 	if statement.Where == nil {
 		return Result{}, fmt.Errorf("E_WHERE_REQUIRED: UPDATE requires WHERE")
 	}

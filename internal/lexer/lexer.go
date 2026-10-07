@@ -24,7 +24,8 @@ func New(input string) *Lexer {
 	}
 }
 
-// NextToken returns the next token, or EOF after all input has been read.
+// NextToken scans one token while preserving line and column information for
+// parser diagnostics.
 func (l *Lexer) NextToken() token.Token {
 	l.skipWhitespace()
 
@@ -125,6 +126,8 @@ func (l *Lexer) readString(line, column int) token.Token {
 // readQuotedIdentifier reads a SQL delimited identifier. Unlike a string,
 // its value is kept as an identifier so keywords and punctuation can appear
 // inside names such as "apps/v1/statefulsets" or "/spec/replicas".
+// readQuotedIdentifier decodes a double-quoted SQL identifier, including the
+// SQL escape sequence "" for an embedded quote.
 func (l *Lexer) readQuotedIdentifier(line, column int) token.Token {
 	l.advance()
 	var value strings.Builder

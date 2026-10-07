@@ -28,6 +28,8 @@ type Clients struct {
 }
 
 func NewClients(kubeconfigPath, contextName string) (Clients, error) {
+	// NewClients loads kubeconfig once so all client types share credentials and
+	// the selected context; it also resolves the context's default namespace.
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	if kubeconfigPath != "" {
 		loadingRules.ExplicitPath = kubeconfigPath

@@ -12,6 +12,8 @@ import (
 )
 
 func (e *Executor) update(ctx context.Context, statement *ast.UpdateStatement) (Result, error) {
+	// update performs fixed-table candidate matching and applies guarded JSON
+	// patches through the typed client adapters.
 	if statement.Where == nil {
 		return Result{}, fmt.Errorf("E_WHERE_REQUIRED: UPDATE requires WHERE")
 	}

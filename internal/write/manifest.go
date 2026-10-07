@@ -19,6 +19,8 @@ type manifest struct {
 }
 
 func decodeManifest(statement *ast.InsertStatement, namespace string) (manifest, error) {
+	// decodeManifest validates the SQL manifest independently from Kubernetes,
+	// normalizing namespace defaults before the typed client is called.
 	// INSERT has two independent parsing layers: the SQL lexer has already
 	// decoded the outer string literal, and encoding/json now validates the
 	// Kubernetes manifest contained inside that string. Keeping them separate

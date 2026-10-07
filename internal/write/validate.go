@@ -15,6 +15,8 @@ var writable = map[string]map[string]bool{
 }
 
 func validateUpdate(statement *ast.UpdateStatement) error {
+	// validateUpdate enforces the fixed tables' writable columns and literal
+	// types before any list or patch request is made.
 	table := strings.ToLower(statement.Table)
 	columns, ok := writable[table]
 	if !ok {
@@ -87,6 +89,7 @@ func validateDelete(statement *ast.DeleteStatement) error {
 }
 
 func validateWhere(table string, expression ast.Expression) error {
+	// validateWhere restricts fixed-table predicates to fields with known types.
 	if expression == nil {
 		return fmt.Errorf("E_WHERE_REQUIRED: write statement requires WHERE")
 	}

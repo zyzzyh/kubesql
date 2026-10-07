@@ -19,6 +19,7 @@ const (
 
 // Evaluate evaluates expression against one resource row.
 func Evaluate(expression ast.Expression, row map[string]any) (Truth, error) {
+	// Evaluate applies SQL three-valued logic to one resource row.
 	return evaluateBoolean(expression, row)
 }
 

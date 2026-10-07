@@ -18,6 +18,8 @@ import (
 
 // Run executes one SQL statement and returns the process exit code.
 func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	// Run is the application boundary: parse input, build clients, dispatch the
+	// statement, and translate errors into the documented process exit code.
 	opts, err := parseOptions(args)
 	if err != nil {
 		return reportError(stderr, err)
@@ -69,6 +71,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 }
 
 func reportError(stderr io.Writer, err error) int {
+	// reportError keeps stderr as one structured JSON response and returns its
+	// stable application exit status.
 	if outputErr := output.WriteError(stderr, err); outputErr != nil {
 		return apperror.ExitCode(outputErr)
 	}

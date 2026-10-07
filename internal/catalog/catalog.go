@@ -49,6 +49,7 @@ var tables = map[string]Table{
 
 // IsKnownTable reports whether a statement targets a typed built-in table.
 func IsKnownTable(statement *ast.SelectStatement) bool {
+	// IsKnownTable distinguishes the fixed typed schema from runtime resources.
 	name := statement.Table
 	if !statement.TableQuoted {
 		name = strings.ToLower(name)
@@ -60,6 +61,8 @@ func IsKnownTable(statement *ast.SelectStatement) bool {
 // ResolveDynamic creates projections for a resource whose schema is discovered
 // at runtime. Field validation is deferred until unstructured objects arrive.
 func ResolveDynamic(statement *ast.SelectStatement) (Table, []Projection, error) {
+	// ResolveDynamic builds deferred projections because unstructured resources
+	// do not have a compile-time column schema.
 	table := Table{Name: statement.Table, Dynamic: true}
 	if len(statement.Columns) == 1 {
 		if _, ok := statement.Columns[0].(*ast.Star); ok {
@@ -87,6 +90,7 @@ func ResolveDynamic(statement *ast.SelectStatement) (Table, []Projection, error)
 
 // Resolve validates a SELECT target before any Kubernetes request is made.
 func Resolve(statement *ast.SelectStatement) (Table, []Projection, error) {
+	// Resolve validates fixed tables, columns, aliases, and WHERE references.
 	tableName := statement.Table
 	if !statement.TableQuoted {
 		tableName = strings.ToLower(tableName)

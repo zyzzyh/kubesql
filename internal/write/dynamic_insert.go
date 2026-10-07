@@ -12,6 +12,7 @@ import (
 )
 
 func (e *Executor) insertDynamic(ctx context.Context, statement *ast.InsertStatement) (Result, error) {
+	// insertDynamic validates a manifest against Discovery before creating it.
 	if len(statement.Columns) != 1 || strings.ToLower(statement.Columns[0]) != "manifest" {
 		return Result{}, fmt.Errorf("E_SEMANTIC: INSERT requires exactly one manifest column")
 	}
