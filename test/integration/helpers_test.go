@@ -93,6 +93,11 @@ func applyFixture(t *testing.T, namespace string) {
 		t.Fatalf("read fixture: %v", err)
 	}
 	manifest := strings.ReplaceAll(string(data), "${NAMESPACE}", namespace)
+	applyManifest(t, manifest)
+}
+
+func applyManifest(t *testing.T, manifest string) {
+	t.Helper()
 	commandContext, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	command := exec.CommandContext(commandContext, "kubectl", "apply", "-f", "-")

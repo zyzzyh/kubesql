@@ -10,21 +10,23 @@ import (
 )
 
 const (
-	CodeParse             = "E_PARSE"
-	CodeUsage             = "E_USAGE"
-	CodeSemantic          = "E_SEMANTIC"
-	CodeEval              = "E_EVAL"
-	CodeWhereRequired     = "E_WHERE_REQUIRED"
-	CodeNamespaceRequired = "E_NAMESPACE_REQUIRED"
-	CodeKubernetes        = "E_KUBE"
-	CodeAlreadyExists     = "E_ALREADY_EXISTS"
-	CodeNotFound          = "E_NOT_FOUND"
-	CodeForbidden         = "E_FORBIDDEN"
-	CodeConflict          = "E_CONFLICT"
-	CodeOutput            = "E_OUTPUT"
-	CodeInput             = "E_INPUT"
-	CodeDiscovery         = "E_DISCOVERY"
-	CodeUnsupportedVerb   = "E_UNSUPPORTED_VERB"
+	CodeParse                  = "E_PARSE"
+	CodeUsage                  = "E_USAGE"
+	CodeSemantic               = "E_SEMANTIC"
+	CodeEval                   = "E_EVAL"
+	CodeWhereRequired          = "E_WHERE_REQUIRED"
+	CodeNamespaceRequired      = "E_NAMESPACE_REQUIRED"
+	CodeKubernetes             = "E_KUBE"
+	CodeAlreadyExists          = "E_ALREADY_EXISTS"
+	CodeNotFound               = "E_NOT_FOUND"
+	CodeForbidden              = "E_FORBIDDEN"
+	CodeConflict               = "E_CONFLICT"
+	CodeOutput                 = "E_OUTPUT"
+	CodeInput                  = "E_INPUT"
+	CodeDiscovery              = "E_DISCOVERY"
+	CodeUnsupportedVerb        = "E_UNSUPPORTED_VERB"
+	CodeUnsupportedSubresource = "E_UNSUPPORTED_SUBRESOURCE"
+	CodeMetricsUnavailable     = "E_METRICS_UNAVAILABLE"
 )
 
 // Error is the stable application error returned to CLI callers.

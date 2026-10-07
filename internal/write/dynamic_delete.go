@@ -69,16 +69,19 @@ func (e *Executor) deleteDynamic(ctx context.Context, statement *ast.DeleteState
 func dynamicValues(item unstructured.Unstructured) map[string]any {
 	values := map[string]any{}
 	name, _, _ := unstructured.NestedString(item.Object, "metadata", "name")
-	namespace, _, _ := unstructured.NestedString(item.Object, "metadata", "namespace")
 	values["name"] = name
-	values["namespace"] = namespace
+	if namespace, found, _ := unstructured.NestedString(item.Object, "metadata", "namespace"); found {
+		values["namespace"] = namespace
+	} else {
+		values["namespace"] = nil
+	}
 	flattenDynamicValues(values, item.Object, "")
 	return values
 }
 
 func flattenDynamicValues(values map[string]any, object map[string]any, prefix string) {
 	for key, value := range object {
-		path := prefix + "/" + key
+		path := prefix + "/" + strings.NewReplacer("~", "~0", "/", "~1").Replace(key)
 		values[path] = value
 		if child, ok := value.(map[string]any); ok {
 			flattenDynamicValues(values, child, path)

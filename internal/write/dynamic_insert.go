@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/zyzzyh/kubesql/internal/ast"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 func (e *Executor) insertDynamic(ctx context.Context, statement *ast.InsertStatement) (Result, error) {
@@ -51,16 +53,19 @@ func (e *Executor) insertDynamic(ctx context.Context, statement *ast.InsertState
 	if resource.Kind != "" && kind != resource.Kind {
 		return Result{}, fmt.Errorf("E_SEMANTIC: manifest kind %q does not match %q", kind, resource.Kind)
 	}
-	metadata, ok := object["metadata"].(map[string]any)
-	if !ok {
-		return Result{}, fmt.Errorf("E_SEMANTIC: manifest metadata must be an object")
-	}
-	name, ok := metadata["name"].(string)
-	if !ok || name == "" {
+	metadata, _ := object["metadata"].(map[string]any)
+	name, _ := metadata["name"].(string)
+	createOnly := resource.Verbs["create"] && !resource.Verbs["list"]
+	if !createOnly && name == "" {
 		return Result{}, fmt.Errorf("E_SEMANTIC: manifest metadata.name must be a non-empty string")
 	}
-	if err := prepareDynamicNamespace(metadata, resource.Namespaced, e.namespace); err != nil {
-		return Result{}, err
+	if resource.Namespaced && e.namespace == "" {
+		return Result{}, fmt.Errorf("E_NAMESPACE_REQUIRED: namespaced INSERT requires a namespace")
+	}
+	if metadata != nil {
+		if err := prepareDynamicNamespace(metadata, resource.Namespaced, e.namespace); err != nil {
+			return Result{}, err
+		}
 	}
 
 	created := &unstructured.Unstructured{Object: object}
@@ -76,7 +81,11 @@ func (e *Executor) insertDynamic(ctx context.Context, statement *ast.InsertState
 		result.FailedRows = 1
 		return result, nil
 	}
-	_ = created
+	if resource.GVR == (schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}) {
+		if err := e.resolver.WaitForCRD(ctx, e.dynamic, created, 60*time.Second); err != nil {
+			return Result{}, err
+		}
+	}
 	result.AffectedRows = 1
 	return result, nil
 }
@@ -91,7 +100,11 @@ func validateDynamicManifest(object map[string]any) error {
 	if _, ok := object["status"]; ok {
 		return fmt.Errorf("E_SEMANTIC: status is server-managed and cannot be inserted")
 	}
-	metadata, ok := object["metadata"].(map[string]any)
+	metadataValue, exists := object["metadata"]
+	if !exists {
+		return nil
+	}
+	metadata, ok := metadataValue.(map[string]any)
 	if !ok {
 		return fmt.Errorf("E_SEMANTIC: manifest metadata must be an object")
 	}

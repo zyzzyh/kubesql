@@ -10,6 +10,7 @@ import (
 	"github.com/zyzzyh/kubesql/internal/catalog"
 	"github.com/zyzzyh/kubesql/internal/discovery"
 	"github.com/zyzzyh/kubesql/internal/eval"
+	metricsclient "github.com/zyzzyh/kubesql/internal/metrics"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/dynamic"
@@ -21,6 +22,7 @@ type Executor struct {
 	client        kubernetes.Interface
 	dynamicClient dynamic.Interface
 	resolver      *discovery.Resolver
+	metricsClient metricsclient.Client
 	namespace     string
 	allNamespaces bool
 }
@@ -32,8 +34,12 @@ func NewExecutor(client kubernetes.Interface, namespace string, allNamespaces bo
 
 // NewDynamicExecutor adds runtime-discovered resources while preserving the
 // typed path used by the original built-in tables.
-func NewDynamicExecutor(client kubernetes.Interface, dynamicClient dynamic.Interface, resolver *discovery.Resolver, namespace string, allNamespaces bool) *Executor {
-	return &Executor{client: client, dynamicClient: dynamicClient, resolver: resolver, namespace: namespace, allNamespaces: allNamespaces}
+func NewDynamicExecutor(client kubernetes.Interface, dynamicClient dynamic.Interface, resolver *discovery.Resolver, namespace string, allNamespaces bool, metricClients ...metricsclient.Client) *Executor {
+	var metricClient metricsclient.Client
+	if len(metricClients) > 0 {
+		metricClient = metricClients[0]
+	}
+	return &Executor{client: client, dynamicClient: dynamicClient, resolver: resolver, metricsClient: metricClient, namespace: namespace, allNamespaces: allNamespaces}
 }
 
 // Execute validates and runs one SELECT statement.
@@ -63,10 +69,50 @@ func (e *Executor) Execute(ctx context.Context, statement *ast.SelectStatement) 
 		}
 		return e.executeDynamic(ctx, resource, columns, e.namespace, statement.Where)
 	}
+	if table.Metrics {
+		return e.executeMetrics(ctx, table.Name, columns, statement.Where, table.Namespaced && e.allNamespaces)
+	}
 	if table.Namespaced && e.allNamespaces {
 		return e.executeAllNamespaces(ctx, table.Name, columns, statement.Where)
 	}
 	return e.executeNamespace(ctx, table.Name, columns, e.namespace, statement.Where)
+}
+
+func (e *Executor) executeMetrics(ctx context.Context, tableName string, columns []catalog.Projection, where ast.Expression, allNamespaces bool) ([]map[string]any, error) {
+	if e.metricsClient == nil {
+		return nil, fmt.Errorf("E_METRICS_UNAVAILABLE: Metrics API client is not configured")
+	}
+	rows := make([]resourceRow, 0)
+	switch tableName {
+	case "pod_metrics":
+		namespace := e.namespace
+		if allNamespaces {
+			namespace = ""
+		}
+		items, err := e.metricsClient.ListPodMetrics(ctx, namespace)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range items {
+			rows = append(rows, resourceRow{metric: map[string]any{
+				"name": item.Name, "namespace": item.Namespace,
+				"cpu_millicores": item.CPUMillicores, "memory_bytes": item.MemoryBytes,
+			}})
+		}
+	case "node_metrics":
+		items, err := e.metricsClient.ListNodeMetrics(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range items {
+			rows = append(rows, resourceRow{metric: map[string]any{
+				"name": item.Name, "cpu_millicores": item.CPUMillicores, "memory_bytes": item.MemoryBytes,
+			}})
+		}
+	default:
+		return nil, fmt.Errorf("E_SEMANTIC: unknown Metrics table %q", tableName)
+	}
+	return filterAndProject(resourceList{rows: rows}, columns, where)
 }
 
 func (e *Executor) executeDynamic(ctx context.Context, resource discovery.Resource, columns []catalog.Projection, namespace string, where ast.Expression) ([]map[string]any, error) {

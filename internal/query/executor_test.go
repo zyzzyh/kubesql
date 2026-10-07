@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/zyzzyh/kubesql/internal/ast"
+	"github.com/zyzzyh/kubesql/internal/metrics"
 	"github.com/zyzzyh/kubesql/internal/parser"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -172,6 +173,48 @@ func TestWhereIncompatibleTypesReturnError(t *testing.T) {
 	statement := parseSelect(t, "SELECT name FROM deployments WHERE replicas = 'one'")
 	if _, err := NewExecutor(client, "default", false).Execute(context.Background(), statement); err == nil {
 		t.Fatal("incompatible WHERE types were accepted")
+	}
+}
+
+type metricsStub struct {
+	podsNamespace string
+	pods          []metrics.PodMetric
+	nodes         []metrics.NodeMetric
+	err           error
+}
+
+func (m *metricsStub) ListPodMetrics(_ context.Context, namespace string) ([]metrics.PodMetric, error) {
+	m.podsNamespace = namespace
+	return m.pods, m.err
+}
+
+func (m *metricsStub) ListNodeMetrics(context.Context) ([]metrics.NodeMetric, error) {
+	return m.nodes, m.err
+}
+
+func TestExecutePodMetricsFiltersAndProjects(t *testing.T) {
+	metricsClient := &metricsStub{pods: []metrics.PodMetric{
+		{Name: "measure", Namespace: "demo", CPUMillicores: 150, MemoryBytes: 80 * 1024 * 1024},
+		{Name: "other", Namespace: "demo", CPUMillicores: 10, MemoryBytes: 1024},
+	}}
+	statement := parseSelect(t, "SELECT name, cpu_millicores, memory_bytes FROM pod_metrics WHERE cpu_millicores >= 100")
+	rows, err := NewDynamicExecutor(fake.NewSimpleClientset(), nil, nil, "demo", false, metricsClient).Execute(context.Background(), statement)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []map[string]any{{"name": "measure", "cpu_millicores": int64(150), "memory_bytes": int64(80 * 1024 * 1024)}}
+	if !reflect.DeepEqual(rows, want) {
+		t.Fatalf("rows: got %#v, want %#v", rows, want)
+	}
+	if metricsClient.podsNamespace != "demo" {
+		t.Fatalf("requested namespace: got %q", metricsClient.podsNamespace)
+	}
+}
+
+func TestClusterScopedDynamicNamespaceIsNull(t *testing.T) {
+	values := flattenDynamic(map[string]any{"metadata": map[string]any{"name": "cluster-note"}})
+	if value, exists := values["namespace"]; !exists || value != nil {
+		t.Fatalf("cluster-scoped namespace should be JSON null, got %#v", values["namespace"])
 	}
 }
 

@@ -1,6 +1,8 @@
 package query
 
 import (
+	"strings"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -13,6 +15,7 @@ type resourceRow struct {
 	replicas              any
 	defaultBackendService any
 	dynamic               map[string]any
+	metric                map[string]any
 }
 
 type resourceList struct {
@@ -22,6 +25,9 @@ type resourceList struct {
 func (r resourceRow) values() map[string]any {
 	if r.dynamic != nil {
 		return flattenDynamic(r.dynamic)
+	}
+	if r.metric != nil {
+		return r.metric
 	}
 	return map[string]any{
 		"name":                    r.name,
@@ -33,8 +39,13 @@ func (r resourceRow) values() map[string]any {
 
 func flattenDynamic(object map[string]any) map[string]any {
 	values := make(map[string]any, len(object)+2)
-	values["name"], _, _ = unstructured.NestedString(object, "metadata", "name")
-	values["namespace"], _, _ = unstructured.NestedString(object, "metadata", "namespace")
+	name, _, _ := unstructured.NestedString(object, "metadata", "name")
+	values["name"] = name
+	if namespace, found, _ := unstructured.NestedString(object, "metadata", "namespace"); found {
+		values["namespace"] = namespace
+	} else {
+		values["namespace"] = nil
+	}
 	for key, value := range object {
 		values[key] = value
 		flattenNested(values, "/"+key, value)
@@ -48,7 +59,7 @@ func flattenNested(values map[string]any, prefix string, value any) {
 		return
 	}
 	for key, item := range child {
-		path := prefix + "/" + key
+		path := prefix + "/" + strings.NewReplacer("~", "~0", "/", "~1").Replace(key)
 		values[path] = item
 		flattenNested(values, path, item)
 	}

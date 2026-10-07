@@ -2,6 +2,7 @@
 package discovery
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -51,6 +52,9 @@ func (r *Resolver) Resolve(reference string, exact bool) (Resource, error) {
 	var requested Reference
 	var err error
 	if exact {
+		if subresource := unsupportedSubresource(reference); subresource != "" {
+			return Resource{}, fmt.Errorf("E_UNSUPPORTED_SUBRESOURCE: Kubernetes subresource %q is not a SQL resource table", subresource)
+		}
 		requested, err = ParseReference(reference)
 		if err != nil {
 			return Resource{}, err
@@ -58,6 +62,9 @@ func (r *Resolver) Resolve(reference string, exact bool) (Resource, error) {
 	}
 
 	groups, lists, discoveryErr := r.client.ServerGroupsAndResources()
+	if exact && isFailedGroupVersion(discoveryErr, requested.Group, requested.Version) {
+		return Resource{}, &DiscoveryError{Cause: discoveryErr}
+	}
 	preferred := preferredVersions(groups)
 	candidates := collectCandidates(lists, requested, exact)
 	if len(candidates) == 0 {
@@ -74,17 +81,31 @@ func (r *Resolver) Resolve(reference string, exact bool) (Resource, error) {
 	if err != nil {
 		return Resource{}, err
 	}
-	if discoveryErr != nil {
-		return selected, &DiscoveryError{Cause: discoveryErr}
-	}
 	return selected, nil
 }
 
+func unsupportedSubresource(reference string) string {
+	for _, name := range []string{"status", "scale", "exec", "logs", "portforward", "attach", "proxy"} {
+		if strings.HasSuffix(strings.ToLower(reference), "/"+name) {
+			return name
+		}
+	}
+	return ""
+}
+
+func isFailedGroupVersion(err error, group, version string) bool {
+	var partial *k8sdiscovery.ErrGroupDiscoveryFailed
+	if !errors.As(err, &partial) {
+		return err != nil
+	}
+	_, failed := partial.Groups[schema.GroupVersion{Group: group, Version: version}]
+	return failed
+}
+
 type candidate struct {
-	resource  Resource
-	group     string
-	version   string
-	preferred bool
+	resource Resource
+	group    string
+	version  string
 }
 
 func preferredVersions(groups []*metav1.APIGroup) map[string]string {

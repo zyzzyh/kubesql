@@ -90,6 +90,31 @@ func TestUpdatePatchContainsResourceVersionTest(t *testing.T) {
 	}
 }
 
+func TestDynamicUpdateProtectsManagedFieldsAndTheirAncestors(t *testing.T) {
+	for _, path := range []string{
+		"/apiVersion", "/kind", "/status/phase", "/metadata/name",
+		"/metadata/resourceVersion", "/metadata",
+	} {
+		if err := validateDynamicPath(path); err == nil {
+			t.Errorf("managed path %q was allowed", path)
+		}
+	}
+	for _, path := range []string{"/spec/replicas", "/metadata/labels", "/metadata/annotations/team"} {
+		if err := validateDynamicPath(path); err != nil {
+			t.Errorf("mutable path %q was rejected: %v", path, err)
+		}
+	}
+}
+
+func TestCreateOnlyDynamicManifestMayOmitMetadata(t *testing.T) {
+	if err := validateDynamicManifest(map[string]any{
+		"apiVersion": "authentication.k8s.io/v1", "kind": "TokenReview",
+		"spec": map[string]any{"token": "opaque"},
+	}); err != nil {
+		t.Fatalf("create-only request object rejected: %v", err)
+	}
+}
+
 func parseWrite(t *testing.T, input string) ast.Statement {
 	t.Helper()
 	statement, err := parser.New(input).Parse()

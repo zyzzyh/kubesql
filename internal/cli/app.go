@@ -44,7 +44,7 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	switch statement := statement.(type) {
 	case *ast.SelectStatement:
 		resolver := discovery.NewResolver(clients.Discovery)
-		rows, executeErr := query.NewDynamicExecutor(clients.Typed, clients.Dynamic, resolver, opts.namespace, opts.allNamespaces).Execute(ctx, statement)
+		rows, executeErr := query.NewDynamicExecutor(clients.Typed, clients.Dynamic, resolver, opts.namespace, opts.allNamespaces, clients.Metrics).Execute(ctx, statement)
 		if executeErr != nil {
 			return reportError(stderr, executeErr)
 		}

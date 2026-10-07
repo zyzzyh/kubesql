@@ -89,12 +89,27 @@ func (e *Executor) updateDynamic(ctx context.Context, statement *ast.UpdateState
 }
 
 func validateDynamicPath(path string) error {
-	for _, forbidden := range []string{"/metadata/name", "/metadata/namespace", "/metadata/uid", "/metadata/resourceVersion", "/status"} {
-		if path == forbidden || strings.HasPrefix(path, forbidden+"/") {
+	if path == "/" {
+		return fmt.Errorf("E_SEMANTIC: JSON Pointer %q targets the complete resource", path)
+	}
+	forbiddenPaths := []string{
+		"/apiVersion", "/kind", "/status",
+		"/metadata/name", "/metadata/namespace", "/metadata/uid",
+		"/metadata/resourceVersion", "/metadata/managedFields",
+		"/metadata/creationTimestamp", "/metadata/generation",
+		"/metadata/selfLink", "/metadata/deletionTimestamp",
+		"/metadata/deletionGracePeriodSeconds",
+	}
+	for _, forbidden := range forbiddenPaths {
+		if pointerPathsOverlap(path, forbidden) {
 			return fmt.Errorf("E_SEMANTIC: JSON Pointer %q targets a server-managed field", path)
 		}
 	}
 	return nil
+}
+
+func pointerPathsOverlap(path, protected string) bool {
+	return path == protected || strings.HasPrefix(path, protected+"/") || strings.HasPrefix(protected, path+"/")
 }
 
 func buildDynamicPatch(item unstructured.Unstructured, assignments []ast.Assignment) ([]byte, error) {
@@ -117,7 +132,7 @@ func pointerExists(object map[string]any, pointer string) bool {
 	parts := strings.Split(strings.TrimPrefix(pointer, "/"), "/")
 	var current any = object
 	for _, part := range parts {
-		part = strings.ReplaceAll(strings.ReplaceAll(part, "~1", "/"), "~0", "~")
+		part = strings.NewReplacer("~1", "/", "~0", "~").Replace(part)
 		values, ok := current.(map[string]any)
 		if !ok {
 			return false

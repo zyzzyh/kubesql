@@ -20,6 +20,7 @@ type Table struct {
 	Columns          []Column
 	SupportsAllNames bool
 	Dynamic          bool
+	Metrics          bool
 }
 
 // Projection maps a resource field to the key returned in one result row.
@@ -44,6 +45,18 @@ var tables = map[string]Table{
 		Name:       "ingresses",
 		Namespaced: true,
 		Columns:    []Column{{Name: "name"}, {Name: "namespace"}, {Name: "default_backend_service"}},
+	},
+	"pod_metrics": {
+		Name:       "pod_metrics",
+		Namespaced: true,
+		Columns:    []Column{{Name: "name"}, {Name: "namespace"}, {Name: "cpu_millicores"}, {Name: "memory_bytes"}},
+		Metrics:    true,
+	},
+	"node_metrics": {
+		Name:       "node_metrics",
+		Namespaced: false,
+		Columns:    []Column{{Name: "name"}, {Name: "cpu_millicores"}, {Name: "memory_bytes"}},
+		Metrics:    true,
 	},
 }
 

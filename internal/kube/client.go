@@ -4,6 +4,7 @@ package kube
 import (
 	"fmt"
 
+	metricsclient "github.com/zyzzyh/kubesql/internal/metrics"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -24,6 +25,7 @@ type Clients struct {
 	Typed     kubernetes.Interface
 	Dynamic   dynamic.Interface
 	Discovery discovery.DiscoveryInterface
+	Metrics   metricsclient.Client
 	Namespace string
 }
 
@@ -63,5 +65,9 @@ func NewClients(kubeconfigPath, contextName string) (Clients, error) {
 	if err != nil {
 		return Clients{}, fmt.Errorf("create discovery client: %w", err)
 	}
-	return Clients{Typed: client, Dynamic: dynamicClient, Discovery: discoveryClient, Namespace: namespace}, nil
+	metricsClient, err := metricsclient.NewClient(config)
+	if err != nil {
+		return Clients{}, err
+	}
+	return Clients{Typed: client, Dynamic: dynamicClient, Discovery: discoveryClient, Metrics: metricsClient, Namespace: namespace}, nil
 }
